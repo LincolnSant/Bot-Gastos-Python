@@ -1,32 +1,53 @@
 import json
 import os
 
-
 ARQUIVO_DE_GASTOS = 'gastos.json'
 
+# --- CLASSE GASTO (A Planta do Robô) ---
+class Gasto:
+    def __init__(self, valor, categoria, descricao):
+        self.valor = valor
+        self.categoria = categoria
+        self.descricao = descricao
+
+    def para_dicionario(self):
+        return {
+            'valor': self.valor,
+            'cat': self.categoria,
+            'desc': self.descricao
+        }
+# ---------------------------------------
+
 # --- GAVETA 3: CARREGAR DADOS ---
-
-
 def carregar_dados():
-    # Se o arquivo não existir, retorna uma lista vazia
     if not os.path.exists(ARQUIVO_DE_GASTOS):
         return []
 
-    # Se o arquivo existir, tenta ler
     try:
         with open(ARQUIVO_DE_GASTOS, 'r') as f:
-            dados = json.load(f)
-            return dados
-    except json.JSONDecodeError:
+            dados_brutos = json.load(f)
+            
+            # RECONSTRUÇÃO: Transforma os dicionários do JSON de volta em Objetos Gasto
+            lista_de_objetos = []
+            for gasto_dict in dados_brutos:
+                gasto_obj = Gasto(
+                    gasto_dict['valor'], 
+                    gasto_dict['cat'], 
+                    gasto_dict['desc']
+                )
+                lista_de_objetos.append(gasto_obj)
+            
+            return lista_de_objetos
 
-        # Se o arquivo estiver corrompido/vazio, retorna lista vazia
-        print('Erro: Arquivo de save corrompido. Começando do zero. ')
+    except json.JSONDecodeError:
+        print('AVISO: Arquivo de save vazio ou corrompido. Começando do zero.')
         return []
+# --- FIM DA GAVETA 3 ---
 
 
 print('============================BOT DE GASTOS=============================')
 
-# --- MEMÓRIA PRINCIPAL (Global) ---
+# --- MEMÓRIA PRINCIPAL ---
 lista_de_gastos = carregar_dados()
 print(f'Total de gastos registrados: {len(lista_de_gastos)}')
 
@@ -36,7 +57,6 @@ def adicionar_gasto():
     print('\n--- Adicionando Novo Gasto ---')
     print('='*70)
 
-    # --- LOPPING DE VERIFICAÇÃO ---
     while True:
         try:
             valor = float(input('\nPor favor, digite o valor do seu gasto: '))
@@ -44,26 +64,16 @@ def adicionar_gasto():
         except ValueError:
             print('='*70)
             print('ERRO: Formato inválido, tente novamente. EX(25.99, 30.00)')
-    # --- FIM DO LOOPING --
-
+    
+    print('='*70)
+    categoria = input('\nAgora, digite a categoria (ex: Alimentação): ').title()
+    print('='*70)
+    descricao = input('\nPor fim, digite a descrição (ex: Almoço): ').title()
     print('='*70)
 
-    categoria = input(
-        '\nAgora, digite a categoria do seu gasto, ex (Alimentação, Lazer): ').title()
-    print('='*70)
-
-    descricao = input(
-        '\nPor fim, digite a descrição do seu gasto, ex (Almoço, Cinema): ').title()
-    print('='*70)
-
-    # -- Dicionario para organizar as 3 info de gastos que serão salvas
-    gasto_atual = {
-        'valor': valor,
-        'cat': categoria,
-        'desc': descricao
-    }
-    lista_de_gastos.append(gasto_atual)
-    # .append() significa "adicionar no fim da lista_de_gastos"
+    # CRIANDO O OBJETO (ROBÔ)
+    novo_gasto = Gasto(valor, categoria, descricao)
+    lista_de_gastos.append(novo_gasto)
 
     print('\n>>> Maravilha, gasto anotado com sucesso! <<<')
     print('='*70)
@@ -71,38 +81,37 @@ def adicionar_gasto():
 
 
 # --- GAVETA 2: MOSTRAR RELATÓRIO ---
-# (Definida ANTES do menu, para que o menu possa "enxergar ela")
 def mostrar_relatorio():
     print('\n================================')
     print('       RELATÓRIO FINAL DE GASTOS')
     print('================================')
 
     if len(lista_de_gastos) == 0:
-        print('Você não registrou nenhum gasto hoje.')
+        print('Você não registrou nenhum gasto ainda.')
     else:
         total_gasto = 0.0
         for gasto in lista_de_gastos:
-            print(
-                f"CATEGORIA: {gasto['cat']} | DESCRIÇÃO: {gasto['desc']} | VALOR: R$ {gasto['valor']:.2f}")
-            total_gasto += gasto['valor']  # Usei o atalho +=
+            # Acessando os dados do OBJETO com ponto (.)
+            print(f"CATEGORIA: {gasto.categoria} | DESCRIÇÃO: {gasto.descricao} | VALOR: R$ {gasto.valor:.2f}")
+            total_gasto += gasto.valor # Soma o valor do objeto
 
         print('--------------------------------')
         print(f'Total de gastos: R$ {total_gasto:.2f}')
-        print(f'\nNúmero de registros: {len(lista_de_gastos)}')
+        print(f'Número de registros: {len(lista_de_gastos)}')
 # --- FIM DA GAVETA 2 ---
 
-# --- GAVETA 4 - SALVAR DADOS ---
 
-
+# --- GAVETA 4: SALVAR DADOS ---
 def salvar_dados():
     try:
-        # 'w' significa 'write' (escrever). Ele SOBRESCREVE o arquivo.
         with open(ARQUIVO_DE_GASTOS, 'w') as f:
-            # json.dump(O_QUE_SALVAR, ONDE_SALVAR, indent=4_para_ficar_bonito)
-            json.dump(lista_de_gastos, f, indent=4)
+            # TRADUÇÃO: Converte os objetos em dicionários antes de salvar
+            lista_para_salvar = [g.para_dicionario() for g in lista_de_gastos]
+            json.dump(lista_para_salvar, f, indent=4)
         print('\n>>> Gastos salvos com sucesso! <<<')
     except Exception as e:
         print(f'ERRO AO SALVAR: {e}')
+# --- FIM DA GAVETA 4 ---
 
 
 # --- LOOP PRINCIPAL (MENU) ---
@@ -113,23 +122,18 @@ while True:
     print(f'Gastos registrados: {len(lista_de_gastos)}')
     print('[1] Adicionar novo gasto')
     print('[2] Ver relatório')
-    print('[3] Sair')
+    print('[3] Sair e Salvar')
 
-    opcao = input('Escolha uma opção (1, 2 ou 3): ').strip()
+    opcao = input('Escolha uma opção: ').strip()
 
     if opcao == '1':
-        adicionar_gasto()  # <--- CHAMA A GAVETA 1
-
+        adicionar_gasto()
     elif opcao == '2':
-        mostrar_relatorio()  # <--- CHAMA A GAVETA 2
-
+        mostrar_relatorio()
     elif opcao == '3':
         salvar_dados()
-
         print('\nObrigado por usar o Bot de Gastos. Até mais!')
-        break  # <--- Quebra o loop do menu e encerra
-
+        break
     else:
-        print('\nERRO: Opção inválida! Digite 1, 2 ou 3.')
-
+        print('\nERRO: Opção inválida!')
 # --- FIM DO PROGRAMA ---
