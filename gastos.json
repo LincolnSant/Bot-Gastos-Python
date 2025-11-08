@@ -2,16 +2,7 @@
     {
         "valor": 22.0,
         "cat": "A",
-        "desc": "B"
-    },
-    {
-        "valor": 55.0,
-        "cat": "C",
-        "desc": "D"
-    },
-    {
-        "valor": 66.0,
-        "cat": "E",
-        "desc": "F"
+        "desc": "B",
+        "data": "08/11/2025"
     }
 ]
