@@ -1,199 +1,160 @@
-import json
+import sqlite3
 import os
 import datetime
 
-# Nome do arquivo onde os gastos serão salvos.
-ARQUIVO_DE_GASTOS = 'gastos.json'
+# Nome do arquivo do banco de dados
+ARQUIVO_BD = 'gastos.db'
 
-# --- CLASSE GASTO (A Planta do Robô) ---
-# Define como cada gasto deve ser estruturado (quais informações ele tem).
-class Gasto:
-    # O __init__ roda automaticamente quando criamos um novo gasto.
-    # ATUALIZADO: Agora recebe 'data' também.
-    def __init__(self, valor, categoria, descricao, data):
-        self.valor = valor           # Guarda o valor
-        self.categoria = categoria   # Guarda a categoria
-        self.descricao = descricao   # Guarda a descrição
-        self.data = data             # Guarda a data
+# --- GAVETA 0: INICIALIZAR O BANCO DE DADOS ---
+# Garante que o arquivo e a tabela existam antes de começarmos.
+def inicializar_bd():
+    conexao = sqlite3.connect(ARQUIVO_BD)
+    cursor = conexao.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS gastos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            valor REAL NOT NULL,
+            categoria TEXT NOT NULL,
+            descricao TEXT NOT NULL,
+            data TEXT NOT NULL
+        )
+    ''')
+    conexao.commit()
+    conexao.close()
 
-    # Ensina o robô a se transformar num dicionário para poder ser salvo no JSON.
-    def para_dicionario(self):
-        return {
-            'valor': self.valor,
-            'cat': self.categoria,
-            'desc': self.descricao,
-            'data': self.data # Salva a data no JSON
-        }
-# ---------------------------------------
+# --- FUNÇÃO EXTRA: CONTAR GASTOS ---
+# Usada apenas para mostrar o total no menu principal.
+def obter_quantidade_gastos():
+    conexao = sqlite3.connect(ARQUIVO_BD)
+    cursor = conexao.cursor()
+    cursor.execute("SELECT COUNT(*) FROM gastos")
+    quantidade = cursor.fetchone()[0]
+    conexao.close()
+    return quantidade
 
-# --- GAVETA 3: CARREGAR DADOS ---
-# Lê o arquivo JSON e recria os objetos Gasto na memória.
-def carregar_dados():
-    if not os.path.exists(ARQUIVO_DE_GASTOS):
-        return []
-
-    try:
-        with open(ARQUIVO_DE_GASTOS, 'r') as f:
-            dados_brutos = json.load(f)
-            
-            lista_de_objetos = []
-            for gasto_dict in dados_brutos:
-                # RECONSTRUÇÃO: Agora incluindo a DATA!
-                gasto_obj = Gasto(
-                    gasto_dict['valor'], 
-                    gasto_dict['cat'], 
-                    gasto_dict['desc'],
-                    # Usa .get() para não quebrar com arquivos antigos sem data
-                    gasto_dict.get('data', 'N/A')
-                )
-                lista_de_objetos.append(gasto_obj)
-            
-            return lista_de_objetos
-
-    except json.JSONDecodeError:
-        print('AVISO: Arquivo de save vazio ou corrompido. Começando do zero.')
-        return []
-# --- FIM DA GAVETA 3 ---
-
-
-print('============================BOT DE GASTOS=============================')
-
-# --- MEMÓRIA PRINCIPAL ---
-lista_de_gastos = carregar_dados()
-print(f'Total de gastos registrados: {len(lista_de_gastos)}')
-
-
-# --- GAVETA 1: ADICIONAR GASTO ---
-# Pergunta os dados ao usuário e cria um novo Gasto.
+# --- GAVETA 1: ADICIONAR GASTO (SQL) ---
 def adicionar_gasto():
     print('\n--- Adicionando Novo Gasto ---')
     print('='*70)
 
+    # Validação do VALOR
     while True:
         try:
             valor = float(input('\nPor favor, digite o valor do seu gasto: '))
             break
         except ValueError:
             print('='*70)
-            print('ERRO: Formato inválido, tente novamente. EX(25.99, 30.00)')
-    
+            print('ERRO: Formato inválido. Use ponto (ex: 25.99)')
+
     print('='*70)
     categoria = input('\nAgora, digite a categoria (ex: Alimentação): ').title()
     print('='*70)
     descricao = input('\nPor fim, digite a descrição (ex: Almoço): ').title()
     print('='*70)
 
-    # --- LOOP DE VALIDAÇÃO DE DATA (NOVO!) ---
+    # Validação da DATA
     while True:
-        data_str = input('\nDigite a data do gasto (DD/MM/AAAA) ou deixe vazio para HOJE: ').strip()
-        
+        data_str = input('\nDigite a data (DD/MM/AAAA) ou deixe vazio para HOJE: ').strip()
         if not data_str:
-            # Se deixou vazio, pega a data de hoje automaticamente.
             data_final = datetime.date.today().strftime('%d/%m/%Y')
             break
         else:
             try:
-                # Tenta validar se o que foi digitado é uma data real.
                 datetime.datetime.strptime(data_str, '%d/%m/%Y')
                 data_final = data_str
                 break
             except ValueError:
-                 print('ERRO: Data inválida. Use o formato DD/MM/AAAA (ex: 31/12/2023)')
-    # -----------------------------------------
+                 print('ERRO: Data inválida. Use DD/MM/AAAA')
 
-    # Cria o novo objeto Gasto com todas as informações (incluindo data).
-    novo_gasto = Gasto(valor, categoria, descricao, data_final)
-    lista_de_gastos.append(novo_gasto)
-
-    print('\n>>> Maravilha, gasto anotado com sucesso! <<<')
+    # --- COMANDO SQL PARA INSERIR ---
+    conexao = sqlite3.connect(ARQUIVO_BD)
+    cursor = conexao.cursor()
+    # Usamos '?' para evitar problemas de segurança (SQL Injection)
+    cursor.execute("INSERT INTO gastos (valor, categoria, descricao, data) VALUES (?, ?, ?, ?)",
+                   (valor, categoria, descricao, data_final))
+    conexao.commit()
+    conexao.close()
+    
+    print('\n>>> Gasto salvo no Banco de Dados com sucesso! <<<')
     print('='*70)
-# --- FIM DA GAVETA 1 ---
 
-
-# --- GAVETA 2: MOSTRAR RELATÓRIO ---
-# Mostra todos os gastos da lista na tela.
+# --- GAVETA 2: MOSTRAR RELATÓRIO (SQL) ---
 def mostrar_relatorio():
     print('\n================================')
     print('       RELATÓRIO FINAL DE GASTOS')
     print('================================')
 
-    if len(lista_de_gastos) == 0:
+    conexao = sqlite3.connect(ARQUIVO_BD)
+    cursor = conexao.cursor()
+    
+    # Pega TUDO da tabela gastos
+    cursor.execute("SELECT * FROM gastos")
+    todos_gastos = cursor.fetchall() # Retorna uma lista de tuplas
+    conexao.close()
+
+    if len(todos_gastos) == 0:
         print('Você não registrou nenhum gasto ainda.')
     else:
         total_gasto = 0.0
-        for gasto in lista_de_gastos:
-            # Agora mostrando a DATA no relatório também!
-            print(f"DATA: {gasto.data} | CATEGORIA: {gasto.categoria} | DESCRIÇÃO: {gasto.descricao} | R$ {gasto.valor:.2f}")
-            total_gasto += gasto.valor
+        for g in todos_gastos:
+            # Como é uma tupla, acessamos pelo índice numérico:
+            # g[0] é o ID, g[1] é o valor, g[2] é categoria, etc.
+            print(f"[ID: {g[0]}] DATA: {g[4]} | CAT: {g[2]} | DESC: {g[3]} | R$ {g[1]:.2f}")
+            total_gasto += g[1]
 
         print('--------------------------------')
         print(f'Total de gastos: R$ {total_gasto:.2f}')
-        print(f'Número de registros: {len(lista_de_gastos)}')
-# --- FIM DA GAVETA 2 ---
+        print(f'Número de registros: {len(todos_gastos)}')
 
-
-# --- GAVETA 5: REMOVER GASTO (NOVO!) ---
-# Permite ao usuário apagar um gasto da lista.
+# --- GAVETA 3: REMOVER GASTO (SQL) ---
 def remover_gasto():
     print('\n--- Remover Gasto ---')
+    # Mostra o relatório para o usuário ver os IDs disponíveis
+    mostrar_relatorio()
     print('='*70)
 
-    if len(lista_de_gastos) == 0:
-        print('Não há gastos para remover.')
-        return
-
-    # Mostra a lista numerada (começando do 1)
-    print('LISTA DE GASTOS:')
-    for i, gasto in enumerate(lista_de_gastos, start=1):
-        print(f"[{i}] DATA: {gasto.data} | R$ {gasto.valor:.2f} | {gasto.descricao}")
-    print('='*70)
-
-    while True:
-        try:
-            opcao = int(input('Digite o NÚMERO do gasto para remover (0 para cancelar): '))
-            
-            if opcao == 0:
-                print('\nOperação cancelada.')
-                break
-            
-            # Valida se o número escolhido existe na lista
-            if 1 <= opcao <= len(lista_de_gastos):
-                # Usa 'opcao - 1' porque a lista interna começa do 0
-                indice_real = opcao - 1
-                gasto_removido = lista_de_gastos.pop(indice_real)
-                print(f'\n>>> Gasto "{gasto_removido.descricao}" (R$ {gasto_removido.valor:.2f}) removido! <<<')
-                break
-            else:
-                print(f'ERRO: Número inválido. Digite entre 1 e {len(lista_de_gastos)}.')
-
-        except ValueError:
-            print('ERRO: Digite apenas números inteiros.')
-# --- FIM DA GAVETA 5 ---
-
-
-# --- GAVETA 4: SALVAR DADOS ---
-# Transforma os objetos em dicionários e salva no arquivo JSON.
-def salvar_dados():
     try:
-        with open(ARQUIVO_DE_GASTOS, 'w') as f:
-            lista_para_salvar = [g.para_dicionario() for g in lista_de_gastos]
-            json.dump(lista_para_salvar, f, indent=4)
-        print('\n>>> Gastos salvos com sucesso! <<<')
-    except Exception as e:
-        print(f'ERRO AO SALVAR: {e}')
-# --- FIM DA GAVETA 4 ---
+        id_para_remover = int(input('Digite o ID do gasto para remover (0 para cancelar): '))
+        if id_para_remover == 0:
+            return
 
+        conexao = sqlite3.connect(ARQUIVO_BD)
+        cursor = conexao.cursor()
+        
+        # Primeiro, verifica se esse ID realmente existe
+        cursor.execute("SELECT count(*) FROM gastos WHERE id = ?", (id_para_remover,))
+        if cursor.fetchone()[0] == 0:
+            print(f'\nERRO: Gasto com ID {id_para_remover} não encontrado.')
+        else:
+            # Se existe, deleta!
+            cursor.execute("DELETE FROM gastos WHERE id = ?", (id_para_remover,))
+            conexao.commit()
+            print(f'\n>>> Gasto ID {id_para_remover} removido com sucesso! <<<')
+        
+        conexao.close()
+
+    except ValueError:
+        print('\nERRO: Digite um número de ID válido.')
+
+# ==============================================================================
+# --- INÍCIO DO PROGRAMA ---
+print('============================BOT DE GASTOS=============================')
+inicializar_bd() # Cria o arquivo .db se ele não existir
+print('Banco de dados conectado com sucesso!')
 
 # --- LOOP PRINCIPAL (MENU) ---
 while True:
+    # Pega a quantidade atualizada direto do banco
+    qtd = obter_quantidade_gastos()
+    
     print('\n============================')
     print('       MENU PRINCIPAL')
     print('============================')
-    print(f'Gastos registrados: {len(lista_de_gastos)}')
+    print(f'Gastos registrados no Banco: {qtd}')
     print('[1] Adicionar novo gasto')
     print('[2] Ver relatório')
-    print('[3] Remover gasto')    # NOVA OPÇÃO
-    print('[4] Sair e Salvar')    # NOVA OPÇÃO
+    print('[3] Remover gasto')
+    print('[4] Sair')
 
     opcao = input('Escolha uma opção: ').strip()
 
@@ -201,12 +162,10 @@ while True:
         adicionar_gasto()
     elif opcao == '2':
         mostrar_relatorio()
-    elif opcao == '3':        # NOVA CHAMADA
+    elif opcao == '3':
         remover_gasto()
-    elif opcao == '4':        # ATUALIZADO PARA 4
-        salvar_dados()
+    elif opcao == '4':
         print('\nObrigado por usar o Bot de Gastos. Até mais!')
         break
     else:
         print('\nERRO: Opção inválida!')
-# --- FIM DO PROGRAMA ---
